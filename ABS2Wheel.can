@@ -1,23 +1,9 @@
-/*@!Encoding:1252*/
-/* 
-   ---------------------------------------------------------
-    Two-Wheeler ABS ECU Simulation (2-Channel System)
-   ---------------------------------------------------------
-   Wheel speed messages: 
-     0x100 -> Front Wheel
-     0x101 -> Rear Wheel
-   Brake request: 
-     0x110 (signal BrakeReq: 0..1000)
-   ABS status output: 
-     0x200 (ABS_active, Pump_on, Valve_Front, Valve_Rear)
-*/
 
 includes
 {
-  // none required
+  
 }
 
-/* --- Configuration constants --- */
 variables{
 const int MSG_ID_WS_F = 0x100;   // Front wheel speed
 const int MSG_ID_WS_R = 0x101;   // Rear wheel speed
@@ -29,7 +15,7 @@ const float SLIP_THRESHOLD = 15.0; // % slip threshold for ABS activation
 const float SLIP_RELEASE   = 8.0;  // % hysteresis to turn off ABS
 const int ABS_PUBLISH_MS   = 100;   // ABS status message interval (ms)
 float slip;
-/* --- Internal state --- */
+
 float wheelSpeed[2]; // [0] = Front, [1] = Rear
 float vehicleSpeed;  
 int brakeReq = 0;
@@ -43,7 +29,7 @@ msTimer tAbsPublish;
 msTimer tControlLoop;
 }
 
-/* --- Helper: Vehicle speed estimation --- */
+
 float computeVehicleSpeed()
 {
   // For two-wheelers, vehicle speed = average of both wheel speeds
@@ -53,7 +39,7 @@ float computeVehicleSpeed()
   return (wheelSpeed[0] + wheelSpeed[1]) / 2.0;
 }
 
-/* --- Helper: Slip percentage calculation --- */
+
 float computeSlipPercent(float veh, float wheel)
 {
   if(veh < 1.0) return 0.0;
@@ -61,7 +47,7 @@ float computeSlipPercent(float veh, float wheel)
   return ((veh - wheel) / veh) * 100.0;
 }
 
-/* --- Publish ABS status message --- */
+
 void sendAbsStatus()
 {
   message 0x200 absMsg;
@@ -89,7 +75,7 @@ void sendAbsStatus()
   output(AcclerationMsg);
 }
 
-/* --- Message handlers --- */
+
 on message 0x100 // Front wheel speed
 {
   float temp;
@@ -114,7 +100,6 @@ on message 0x110 // Brake request (0..255 ? 0..1000)
   write("break:-%d",brakeReq);
 }
 
-/* --- Initialization --- */
 on start{
   int i;
   for(i=0;i<2;i++)
@@ -132,7 +117,7 @@ on start{
  // setTimer(tAbsPublish, ABS_PUBLISH_MS);
 }
 
-/* --- Control Loop --- */
+
 on timer tControlLoop
 {
   int i;
@@ -184,7 +169,7 @@ on timer tControlLoop
   setTimer(tControlLoop, 10);
 }
 
-/* --- Periodic ABS status transmission --- */
+
 on timer tAbsPublish
 {
   sendAbsStatus();
