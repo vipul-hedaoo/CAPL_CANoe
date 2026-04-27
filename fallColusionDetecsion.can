@@ -1,0 +1,244 @@
+/*@!Encoding:1252*/
+
+
+// ------------ GLOBAL VARIABLES -----------------------------
+variables {
+  // ------------ CONSTANTS FOR FALL LOGIC ---------------------
+  const double TILT_LIMIT_DEG      = 60.0;
+  const double GYRO_LIMIT_DPS      = 150.0;
+  const double IMPACT_MS2_FALL     = 30.0;
+  const long   FALL_CONFIRM_MS     = 1500;
+
+// ------------ CONSTANTS FOR COLLISION LOGIC ---------------
+  const double IMPACT_MS2_COLLISION = 45.0;  // Higher impact threshold
+  const double JERK_LIMIT_MS3       = 30.0;  // Sudden accel spike
+  const double SPEED_DROP_THRESHOLD = 20.0;  // km/h sudden drop
+  const long   COLLISION_CONFIRM_MS = 300;   // Faster decision
+  // IMU data
+//  const int MSG_ID_collDec=0X121;
+  const int MSG_ID_Speed=0x107;//vechile speed out
+  double gTiltAngle_deg;
+  double gGyroRoll_dps;
+  double gAccelMag_ms2=0.0;
+
+  // Speed (from wheel speed/msg)
+  double gVehicleSpeed_kmh=0.0;
+  double gPrevSpeed_kmh=0.0;
+  int vechSpeed=0;
+
+  // For jerk calculation
+  double gPrevAccel_ms2=0.0;
+  double jerk=0;
+  double speedDrop=0;
+
+  // Internal state
+  int gFallCandidate;
+  int gFallConfirmed;
+
+  int gCollisionCandidate;
+  int gCollisionConfirmed;
+
+  mstimer tFallCheck;
+  mstimer tCollisionCheck;
+  mstimer cycSafetyCheck;
+  // CAN messages to transmit (define in DBC)
+  message 0x120 msgFallEvent;
+  message 0x121 msgCollisionEvent;
+  
+  
+}
+
+// ------------ UTILITY FUNCTIONS ----------------------------
+
+// Check FALL abnormal condition
+int isFallCondition()
+{
+  if (gTiltAngle_deg > TILT_LIMIT_DEG)
+  {
+    if (abs(gGyroRoll_dps) > GYRO_LIMIT_DPS) return 1;
+    if (gAccelMag_ms2 > IMPACT_MS2_FALL) return 1;
+  }
+  return 0;
+}
+
+// Check COLLISION abnormal condition
+int isCollisionCondition()
+{
+  jerk = gAccelMag_ms2 - gPrevAccel_ms2;//100
+  speedDrop = gPrevSpeed_kmh - gVehicleSpeed_kmh;
+
+  if (gAccelMag_ms2 > IMPACT_MS2_COLLISION) return 1;   // High impact
+  if (jerk > JERK_LIMIT_MS3) return 1;                  // Sudden accel change
+  if (speedDrop > SPEED_DROP_THRESHOLD) return 1;        // Big ?V
+
+  return 0;
+}
+
+// ------------ INIT ----------------------------
+on start
+{
+  gTiltAngle_deg = 0;
+  gGyroRoll_dps = 0;
+  gAccelMag_ms2 = 0;
+
+  gVehicleSpeed_kmh = 0;
+  gPrevSpeed_kmh = 0;
+
+  gPrevAccel_ms2 = 0;
+
+  gFallCandidate = 0;
+  gFallConfirmed = 0;
+
+  gCollisionCandidate = 0;
+  gCollisionConfirmed = 0;
+  msgFallEvent.dlc=8;
+  msgCollisionEvent.dlc=8;
+ 
+  @sysvar::Safety::CollisionDetected=0;
+  @sysvar::Safety::FallDetected=0;
+//  cancelTimer(tFallCheck);
+//  cancelTimer(tCollisionCheck);
+
+  write(">> IMU Fall + Collision Detection Initialized");
+  
+  setTimer(cycSafetyCheck,100);
+}
+
+
+// ------------ IMU MESSAGE HANDLER --------------------------
+// Modify IMU_Status and signal names based on your DBC
+on key 'q'
+{
+  handelQkey();
+}
+void handelQkey()
+{
+  gTiltAngle_deg = 70;
+  gGyroRoll_dps  = 100;
+  gAccelMag_ms2  = 100;
+}
+// ------------ SPEED MESSAGE HANDLER ------------------------
+// Modify WheelSpeed or Speed_Info based on your DBC
+on message 0x107
+{
+  gPrevSpeed_kmh = gVehicleSpeed_kmh;
+  gVehicleSpeed_kmh = this.byte(0);
+  write("vechIMU :-%f",gVehicleSpeed_kmh);
+}
+
+// ------------ MAIN SAFETY MONITOR (50 ms) ------------------
+on timer cycSafetyCheck
+{
+ //if(gVehicleSpeed_kmh > 30.0){
+ // Save previous accel for jerk
+  gPrevAccel_ms2 = gAccelMag_ms2;
+
+  // ---------------- FALL DETECTION -----------------
+  if (!gFallConfirmed)
+  {
+    if (isFallCondition())
+    {
+      if (!gFallCandidate)
+      {
+        gFallCandidate = 1;
+        setTimer(tFallCheck, FALL_CONFIRM_MS);
+        write("Fall: Candidate Started");
+      }
+    }
+    else
+    {
+      if (gFallCandidate)
+      {
+        gFallCandidate = 0;
+        cancelTimer(tFallCheck);
+      }
+    }
+  }
+
+  // ---------------- COLLISION DETECTION ------------
+  if (!gCollisionConfirmed)
+  {
+    if (isCollisionCondition())
+    {
+      if (!gCollisionCandidate)
+      {
+        gCollisionCandidate = 1;
+        setTimer(tCollisionCheck, COLLISION_CONFIRM_MS);
+        write("Collision: Candidate Started");
+      }
+    }
+    else
+    {
+      if (gCollisionCandidate)
+      {
+        gCollisionCandidate = 0;
+        cancelTimer(tCollisionCheck);
+      }
+    }
+  }
+  setTimer(cycSafetyCheck, 100);
+//}
+//else{write("break");}
+}
+
+// ------------ FALL CONFIRM --------------------------
+on timer tFallCheck
+{
+  if (isFallCondition())
+  {
+  
+    gFallConfirmed = 1;
+    write(">>> FALL DETECTED <<<");
+
+    msgFallEvent.byte(0)= 0x01;
+    output(msgFallEvent);
+    output(msgFallEvent);
+    output(msgFallEvent);
+
+   @sysvar::Safety::FallDetected = 1;
+  }
+  gFallCandidate = 0;
+  
+}
+
+// ------------ COLLISION CONFIRM ----------------------
+on timer tCollisionCheck
+{
+  if (isCollisionCondition())
+  {
+    gCollisionConfirmed = 1;
+    write(">>> COLLISION DETECTED <<<");
+
+    msgCollisionEvent.byte(0)= 0X01;
+    output(msgCollisionEvent);
+    output(msgCollisionEvent);
+    output(msgCollisionEvent);
+
+    @sysvar::Safety::CollisionDetected= 1;
+  }
+  gCollisionCandidate = 0;
+}
+
+// ------------ RESET LOGIC ----------------------------
+on key 'r'
+{
+  gFallConfirmed = 0;
+  gFallCandidate = 0;
+
+  gCollisionConfirmed = 0;
+  gCollisionCandidate = 0;
+
+  @sysvar::Safety::FallDetected = 0;
+  @sysvar::Safety::CollisionDetected = 0;
+  gTiltAngle_deg = 0;
+  gGyroRoll_dps  = 0;
+  gAccelMag_ms2  = 0;
+
+  msgFallEvent.byte(0)=0x00;
+  msgCollisionEvent.byte(0)=0x00;
+
+  output(msgFallEvent);
+  output(msgCollisionEvent);
+
+  write("Reset Done.");
+}

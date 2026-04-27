@@ -1,0 +1,58 @@
+/*@!Encoding:1252*/
+/* Simulate Front and Rear wheel speeds */
+variables{
+msTimer tWheel;
+float fSpeed =60; // km/h
+float rSpeed = 60.0;
+float delta = 0.0;
+int rawFront;
+int rawRear;
+int rawfule;
+int gear=2;
+}
+
+on start{
+  write("Wheel speed generator started...");
+  setTimer(tWheel, 100);
+}
+
+on timer tWheel {
+  message 0x100 frontMsg;
+  message 0x101 rearMsg;
+  message 0x112 fuleLevel;
+  message 0x116 gearInd;
+  gearInd.dlc=8;
+  fuleLevel.dlc=8;
+  frontMsg.dlc=8;
+  frontMsg.byte(0)=0;
+  frontMsg.byte(1)=0;
+  fuleLevel.byte(0)=0x00;
+  fuleLevel.byte(0)=0x00;
+  rearMsg.dlc=8;
+  rearMsg.byte(0)=0;
+  rearMsg.byte(1)=0;
+
+  // Simulate basic ride
+ 
+  rawFront = (int)(fSpeed / 0.01); // convert to raw (0.01 km/h)
+  
+  rawRear = (int)(rSpeed / 0.01);
+
+  frontMsg.byte(0) = (rawFront >> 8) & 0xFF;
+  //frontMsg.byte(0) =  rawFront;
+  frontMsg.byte(1) = rawFront & 0xFF;
+  rearMsg.byte(0)  = (rawRear >> 8) & 0xFF;
+  rearMsg.byte(1)  = rawRear & 0xFF;
+  rawfule=(int)(2/0.001);
+  fuleLevel.byte(0)=(rawfule >>8) & 0xFF;
+  fuleLevel.byte(1)=rawfule & 0xFF;
+  gearInd.byte(0)=@sysvar::Indicator::gearState & 0xFF;
+   
+  output(gearInd);
+  output(frontMsg);
+  output(rearMsg);
+  output(fuleLevel);
+  setTimer(tWheel, 100);
+}
+
+

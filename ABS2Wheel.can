@@ -1,0 +1,192 @@
+/*@!Encoding:1252*/
+/* 
+   ---------------------------------------------------------
+    Two-Wheeler ABS ECU Simulation (2-Channel System)
+   ---------------------------------------------------------
+   Wheel speed messages: 
+     0x100 -> Front Wheel
+     0x101 -> Rear Wheel
+   Brake request: 
+     0x110 (signal BrakeReq: 0..1000)
+   ABS status output: 
+     0x200 (ABS_active, Pump_on, Valve_Front, Valve_Rear)
+*/
+
+includes
+{
+  // none required
+}
+
+/* --- Configuration constants --- */
+variables{
+const int MSG_ID_WS_F = 0x100;   // Front wheel speed
+const int MSG_ID_WS_R = 0x101;   // Rear wheel speed
+const int MSG_ID_BRAKE = 0x110;  // Brake input
+const int MSG_ID_ABS   = 0x200;  // Output ABS status
+const int MSG_ID_Accleration   = 0x102;  // Output accleration status
+const float SCALE_WS = 0.01;     // raw * 0.01 = km/h
+const float SLIP_THRESHOLD = 15.0; // % slip threshold for ABS activation
+const float SLIP_RELEASE   = 8.0;  // % hysteresis to turn off ABS
+const int ABS_PUBLISH_MS   = 100;   // ABS status message interval (ms)
+float slip;
+/* --- Internal state --- */
+float wheelSpeed[2]; // [0] = Front, [1] = Rear
+float vehicleSpeed;  
+int brakeReq = 0;
+
+int valveRequest[2];
+int valveState[2];
+int pumpOn = 0;
+int absActive = 0;
+int accleration=0;
+msTimer tAbsPublish;
+msTimer tControlLoop;
+}
+
+/* --- Helper: Vehicle speed estimation --- */
+float computeVehicleSpeed()
+{
+  // For two-wheelers, vehicle speed = average of both wheel speeds
+  write("vechspeed:-%f",(wheelSpeed[0] + wheelSpeed[1]) / 2.0);
+  write("wheelfront:-%f",wheelSpeed[0]);
+  write("wheelRear:-%f",wheelSpeed[1]);
+  return (wheelSpeed[0] + wheelSpeed[1]) / 2.0;
+}
+
+/* --- Helper: Slip percentage calculation --- */
+float computeSlipPercent(float veh, float wheel)
+{
+  if(veh < 1.0) return 0.0;
+  write("slip:-%f",((veh - wheel)/veh)*100.0);
+  return ((veh - wheel) / veh) * 100.0;
+}
+
+/* --- Publish ABS status message --- */
+void sendAbsStatus()
+{
+  message 0x200 absMsg;
+  message 0x102 AcclerationMsg;
+  AcclerationMsg.dlc=8;
+  AcclerationMsg.byte(0)=0x00;
+  absMsg.dlc=8;
+  absMsg.byte(0) = 0x00;
+  absMsg.byte(1) = 0x00;
+  absMsg.byte(2) = 0x00;
+  absMsg.byte(3) = 0x00;
+
+  if(absActive) absMsg.byte(0) = 0x01; // bit0: ABS active
+  if(pumpOn)    absMsg.byte(1) = 0x01; // bit1: Pump ON
+  if(valveState[0]) absMsg.byte(2) = 0x01; // bit2: Front valve
+  if(valveState[1]) absMsg.byte(3) = 0x01; // bit3: Rear valve
+  if(valveState[0]==2) absMsg.byte(2)= 0x02;
+  if(valveState[1]==2) absMsg.byte(2)= 0x02;
+  if(accleration) AcclerationMsg.byte(0) = 0x01; // bit0:Accleration status
+
+  write("ABS Status -> Active:%d Pump:%d FrontValve:%d RearValve:%d AccleationStatus:%d", 
+         absActive, pumpOn, valveState[0], valveState[1],accleration);
+
+  output(absMsg);
+  output(AcclerationMsg);
+}
+
+/* --- Message handlers --- */
+on message 0x100 // Front wheel speed
+{
+  float temp;
+  //write("this.byte(0):-%02X",this.byte(0));
+  temp = this.byte(0) * 256 + this.byte(1);
+  wheelSpeed[0] = temp * SCALE_WS;
+  //write("wheelSpeed:-%f",wheelSpeed[0]);
+}
+
+on message 0x101 // Rear wheel speed
+{
+  float temp;
+  temp = this.byte(0) * 256 + this.byte(1);
+  wheelSpeed[1] = temp * SCALE_WS;
+}
+
+on message 0x110 // Brake request (0..255 ? 0..1000)
+{
+  int temp;
+  temp= this.byte(0);
+  brakeReq = temp * 4;
+  write("break:-%d",brakeReq);
+}
+
+/* --- Initialization --- */
+on start{
+  int i;
+  for(i=0;i<2;i++)
+  {
+    wheelSpeed[i] = 0.0;
+    valveRequest[i] = 0;
+    valveState[i] = 0;
+  }
+
+  pumpOn = 0;
+  absActive = 0;
+
+  write("Two-Wheeler ABS ECU Simulation started...");
+  setTimer(tControlLoop, 10); // 10 ms control loop
+ // setTimer(tAbsPublish, ABS_PUBLISH_MS);
+}
+
+/* --- Control Loop --- */
+on timer tControlLoop
+{
+  int i;
+  vehicleSpeed = computeVehicleSpeed();
+
+  for(i=0;i<2;i++) valveRequest[i] = 0;
+
+  if(brakeReq > 0)
+  {
+    for(i=0;i<2;i++)
+    {
+      slip = computeSlipPercent(vehicleSpeed, wheelSpeed[i]);
+      if(slip > SLIP_THRESHOLD){
+        valveRequest[i] = 1;
+        wheelSpeed[i]+=2;
+      }
+      else if(slip < SLIP_RELEASE)
+        valveRequest[i] = 0;
+    }
+    
+    absActive = (valveRequest[0] || valveRequest[1]);
+    if(absActive)
+    {
+      pumpOn = 1;
+      accleration=1;
+      for(i=0;i<2;i++)
+        { 
+          valveState[i] = valveRequest[i];
+        }
+    }
+    else
+    {
+      for(i=0;i<2;i++)
+      {
+          valveState[i]=0;
+      }
+      pumpOn = 0;
+      accleration=0;
+    }
+  }
+  else
+  {
+    absActive = 0;
+    pumpOn = 0;
+    accleration=0;
+    for(i=0;i<2;i++) valveState[i] = 0;
+  }
+  sendAbsStatus();
+  setTimer(tControlLoop, 10);
+}
+
+/* --- Periodic ABS status transmission --- */
+on timer tAbsPublish
+{
+  sendAbsStatus();
+  setTimer(tAbsPublish, ABS_PUBLISH_MS);
+}

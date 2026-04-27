@@ -1,0 +1,33 @@
+/*@!Encoding:1252*/
+
+
+
+variables
+{
+  msTimer tBrake;
+  int brakeValue = 600; // 0..1000
+  int scaled;
+}
+
+
+
+on start {
+  write("Brake simulator started...");
+  setTimer(tBrake, 100);
+}
+
+on timer tBrake {
+  message 0x110 brakeMsg;
+  message 0x115 StandWarning;
+  StandWarning.dlc=8;
+  StandWarning.byte(0)=0x00;
+  brakeMsg.byte(0)=0;
+  brakeMsg.dlc=8;
+  scaled = (int) brakeValue / 4; // scale down for byte(0)
+  if (scaled > 255) scaled = 255;
+
+  brakeMsg.byte(0) = scaled;
+  output(brakeMsg);
+  output(StandWarning);
+  setTimer(tBrake, 100);
+}
