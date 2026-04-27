@@ -1,5 +1,4 @@
-/*@!Encoding:1252*/
-/* Simulate Front and Rear wheel speeds */
+
 variables{
 msTimer tWheel;
 float fSpeed =60; // km/h
