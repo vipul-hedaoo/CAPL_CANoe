@@ -76,7 +76,7 @@ void sendAbsStatus()
 }
 
 
-on message 0x100 // Front wheel speed
+on message 0x100 
 {
   float temp;
   //write("this.byte(0):-%02X",this.byte(0));
@@ -85,14 +85,14 @@ on message 0x100 // Front wheel speed
   //write("wheelSpeed:-%f",wheelSpeed[0]);
 }
 
-on message 0x101 // Rear wheel speed
+on message 0x101 
 {
   float temp;
   temp = this.byte(0) * 256 + this.byte(1);
   wheelSpeed[1] = temp * SCALE_WS;
 }
 
-on message 0x110 // Brake request (0..255 ? 0..1000)
+on message 0x110 
 {
   int temp;
   temp= this.byte(0);
