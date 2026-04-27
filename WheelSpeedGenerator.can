@@ -31,7 +31,7 @@ on timer tWheel {
   rearMsg.byte(0)=0;
   rearMsg.byte(1)=0;
 
-  // Simulate basic ride
+  
  
   rawFront = (int)(fSpeed / 0.01); // convert to raw (0.01 km/h)
   
