@@ -1,37 +1,35 @@
-/*@!Encoding:1252*/
 
 
-// ------------ GLOBAL VARIABLES -----------------------------
+//  GLOBAL VARIABLES 
 variables {
-  // ------------ CONSTANTS FOR FALL LOGIC ---------------------
+ 
   const double TILT_LIMIT_DEG      = 60.0;
   const double GYRO_LIMIT_DPS      = 150.0;
   const double IMPACT_MS2_FALL     = 30.0;
   const long   FALL_CONFIRM_MS     = 1500;
 
-// ------------ CONSTANTS FOR COLLISION LOGIC ---------------
+
   const double IMPACT_MS2_COLLISION = 45.0;  // Higher impact threshold
   const double JERK_LIMIT_MS3       = 30.0;  // Sudden accel spike
   const double SPEED_DROP_THRESHOLD = 20.0;  // km/h sudden drop
   const long   COLLISION_CONFIRM_MS = 300;   // Faster decision
-  // IMU data
-//  const int MSG_ID_collDec=0X121;
+  
+
   const int MSG_ID_Speed=0x107;//vechile speed out
   double gTiltAngle_deg;
   double gGyroRoll_dps;
   double gAccelMag_ms2=0.0;
 
-  // Speed (from wheel speed/msg)
   double gVehicleSpeed_kmh=0.0;
   double gPrevSpeed_kmh=0.0;
   int vechSpeed=0;
 
-  // For jerk calculation
+  
   double gPrevAccel_ms2=0.0;
   double jerk=0;
   double speedDrop=0;
 
-  // Internal state
+ 
   int gFallCandidate;
   int gFallConfirmed;
 
@@ -41,16 +39,16 @@ variables {
   mstimer tFallCheck;
   mstimer tCollisionCheck;
   mstimer cycSafetyCheck;
-  // CAN messages to transmit (define in DBC)
+  // CAN messages to transmit 
   message 0x120 msgFallEvent;
   message 0x121 msgCollisionEvent;
   
   
 }
 
-// ------------ UTILITY FUNCTIONS ----------------------------
 
-// Check FALL abnormal condition
+
+
 int isFallCondition()
 {
   if (gTiltAngle_deg > TILT_LIMIT_DEG)
@@ -61,20 +59,19 @@ int isFallCondition()
   return 0;
 }
 
-// Check COLLISION abnormal condition
+//colusion condition
 int isCollisionCondition()
 {
   jerk = gAccelMag_ms2 - gPrevAccel_ms2;//100
   speedDrop = gPrevSpeed_kmh - gVehicleSpeed_kmh;
 
-  if (gAccelMag_ms2 > IMPACT_MS2_COLLISION) return 1;   // High impact
-  if (jerk > JERK_LIMIT_MS3) return 1;                  // Sudden accel change
-  if (speedDrop > SPEED_DROP_THRESHOLD) return 1;        // Big ?V
+  if (gAccelMag_ms2 > IMPACT_MS2_COLLISION) return 1;   
+  if (jerk > JERK_LIMIT_MS3) return 1;                  
+  if (speedDrop > SPEED_DROP_THRESHOLD) return 1;        
 
   return 0;
 }
 
-// ------------ INIT ----------------------------
 on start
 {
   gTiltAngle_deg = 0;
@@ -105,8 +102,8 @@ on start
 }
 
 
-// ------------ IMU MESSAGE HANDLER --------------------------
-// Modify IMU_Status and signal names based on your DBC
+
+
 on key 'q'
 {
   handelQkey();
@@ -117,8 +114,8 @@ void handelQkey()
   gGyroRoll_dps  = 100;
   gAccelMag_ms2  = 100;
 }
-// ------------ SPEED MESSAGE HANDLER ------------------------
-// Modify WheelSpeed or Speed_Info based on your DBC
+
+
 on message 0x107
 {
   gPrevSpeed_kmh = gVehicleSpeed_kmh;
@@ -126,14 +123,14 @@ on message 0x107
   write("vechIMU :-%f",gVehicleSpeed_kmh);
 }
 
-// ------------ MAIN SAFETY MONITOR (50 ms) ------------------
+
 on timer cycSafetyCheck
 {
  //if(gVehicleSpeed_kmh > 30.0){
  // Save previous accel for jerk
   gPrevAccel_ms2 = gAccelMag_ms2;
 
-  // ---------------- FALL DETECTION -----------------
+ 
   if (!gFallConfirmed)
   {
     if (isFallCondition())
@@ -155,7 +152,7 @@ on timer cycSafetyCheck
     }
   }
 
-  // ---------------- COLLISION DETECTION ------------
+ 
   if (!gCollisionConfirmed)
   {
     if (isCollisionCondition())
@@ -181,7 +178,7 @@ on timer cycSafetyCheck
 //else{write("break");}
 }
 
-// ------------ FALL CONFIRM --------------------------
+
 on timer tFallCheck
 {
   if (isFallCondition())
@@ -201,7 +198,7 @@ on timer tFallCheck
   
 }
 
-// ------------ COLLISION CONFIRM ----------------------
+
 on timer tCollisionCheck
 {
   if (isCollisionCondition())
@@ -219,7 +216,7 @@ on timer tCollisionCheck
   gCollisionCandidate = 0;
 }
 
-// ------------ RESET LOGIC ----------------------------
+
 on key 'r'
 {
   gFallConfirmed = 0;
