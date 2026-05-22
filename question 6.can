@@ -1,0 +1,43 @@
+/*@!Encoding:1252*/
+
+includes 
+{ 
+} 
+
+variables 
+{ 
+  // CAPL uses 'enum' directly as a type definition
+  enum DoorState { None = 0, Lock = 1, Unlock = 2, Open = 3, Close = 4, Error = 5 };
+  
+  // Declare the variable using the enum name
+  enum DoorState state; 
+} 
+
+on message 0x306 
+{ 
+  int rawDoorState; 
+  
+  // Extract byte from the message
+  rawDoorState = this.byte(4); 
+  
+  if (rawDoorState >= 0 && rawDoorState <= 5) 
+  { 
+    // CAPL requires a direct assignment or numeric mapping for enums
+    state = (enum DoorState)rawDoorState; 
+    
+    switch (state) 
+    { 
+      case None:   write("Door State : None");   break; 
+      case Lock:   write("Door State : Lock");   break; 
+      case Unlock: write("Door State : Unlock"); break; 
+      case Open:   write("Door State : Open");   break; 
+      case Close:  write("Door State : Close");  break; 
+      case Error:  write("Door State : Error");  break; 
+      default:     write("Invalid Door State");  break;
+    } 
+  } 
+  else 
+  { 
+    write("Invalid Door State"); 
+  } 
+}
